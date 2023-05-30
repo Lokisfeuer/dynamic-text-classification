@@ -435,8 +435,7 @@ class TopicIdentifier:
                 self.optimizer.step()
                 self.optimizer.zero_grad()
                 self.running_loss += lo.item()
-                # TODO: Make this dynamic to about 5 saves per epoch.
-                if (step + 1) % math.floor(len(self.dataloader) / 5) == 0:  # if (step+1) % 100 == 0:
+                if (step + 1) % math.floor(len(self.dataloader) / 5 + 2) == 0:  # if (step+1) % 100 == 0:
                     print(f'current loss:\t\t{self.running_loss / 100}')
                     self.running_loss = 0
                     history.save(epoch + step / len(self.dataloader))
@@ -512,9 +511,9 @@ if __name__ == "__main__":
     ti2.embedd_data(topic2)
     history1, model = ti1.train(epochs=10, lr=0.0001, val_frac=0.1, batch_size=10, loss=nn.BCELoss())  # train models
     history2, model2 = ti1.train(epochs=10, lr=0.0001, val_frac=0.1, batch_size=10, loss=nn.BCELoss())
-    input(f'Now come the graphs from {topic1}.')  # plot training graphs
+    print(f'Now come the graphs from {topic1}.')  # plot training graphs
     history1.plot()
-    input(f'Now come the graphs from {topic2}')
+    print(f'Now come the graphs from {topic2}')
     history2.plot()
 
 # Far higher diversity in not topic related samples needed. Normal conversation, random sequences of letters, etc.
