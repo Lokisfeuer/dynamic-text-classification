@@ -1,4 +1,13 @@
+'''
+!pip install transformers
+!pip install sentence_transformers
+!pip install torchmetrics
+!pip install openai
+'''
+
 # importing
+import sys
+
 import numpy as np  # to handle data
 import pandas as pd  # to handle and save data
 import os
@@ -21,15 +30,15 @@ import openai  # to generate training data
 
 import seaborn as sns  # to analyse data
 from wordcloud import WordCloud
-# import nltk
-# nltk.download('stopwords') # uncomment this line to use the NLTK Downloader
-from nltk.corpus import stopwords
 
+# import nltk
+# nltk.download('stopwords')  # uncomment this line to use the NLTK Downloader
+from nltk.corpus import stopwords
 
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
 
-class CustomTopicDataset(Dataset):  # the dataset class
+class CustomMultiClassDataset(Dataset):  # the dataset class
     def __init__(self, sentences, labels):
         self.x = sentences
         self.y = labels
@@ -45,7 +54,7 @@ class CustomTopicDataset(Dataset):  # the dataset class
 
 
 class NeuralNetwork(nn.Module):  # the NN with linear relu layers and one sigmoid in the end
-    def __init__(self, input_size):
+    def __init__(self, input_size, output_size):
         super().__init__()
         self.linear_relu_stack_with_sigmoid = nn.Sequential(
             nn.Linear(input_size, 2048),
@@ -54,19 +63,21 @@ class NeuralNetwork(nn.Module):  # the NN with linear relu layers and one sigmoi
             nn.ReLU(),
             nn.Linear(2048, 2048),
             nn.ReLU(),
-            nn.Linear(2048, 1024),
+            nn.Linear(2048, 1536),
             nn.ReLU(),
-            nn.Linear(1024, 512),
-            nn.Relu(),
-            nn.Linear(512, 256)
+            nn.Linear(1536, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 768),
+            nn.ReLU(),
+            nn.Linear(768, 512),
+            nn.ReLU(),
+            nn.Linear(512, 256),
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU(),
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(64, 32),
-            nn.ReLU(),
-            nn.Linear(32, 1),
+            nn.Linear(64, output_size),
             nn.Sigmoid()
         )
 
@@ -140,71 +151,6 @@ class History:  # The history object to keep track of metrics during training an
         return figures
 
 
-# this function generates training data using openai. Overall nr*fac*50*2*2 sentences.
-def generate_data(topic, data=None, nr=15, fac=1):
-    def ask_ai(nr, prompt):  # get nr of answers from a prompt. Prompt should end with '\n\n1.'.
-        response = openai.Completion.create(model="text-davinci-003", prompt=prompt, temperature=1, max_tokens=10 * nr)
-        response = '1.' + response['choices'][0]['text'] + '\n'
-        li = []
-        for i in range(nr):
-            pos = response.find(str(i + 1))
-            beg = pos + len(str(i + 1)) + 2
-            end = response[beg:].find('\n')
-            li.append(response[beg:beg + end])
-        return li
-
-    def gen_sentences(nr, factor, prompt):  # generates nr keywords to the prompt and 50*factor sentences to each
-        keywords = ask_ai(nr, prompt)
-        sentences = []
-        for i in keywords:
-            # different kinds of sentences to create diversity in the data
-            print(i)
-            requests = ask_ai(15 * factor, f'Give me {15 * factor} independent short requests about "{i}".\n\n1.')
-            demands = ask_ai(15 * factor, f'Give me {15 * factor} independent short demands about "{i}".\n\n1.')
-            questions = ask_ai(15 * factor, f'Give me {15 * factor} independent short questions about "{i}".\n\n1.')
-            facts = ask_ai(5 * factor, f'Give me {5 * factor} independent short factual statements about "{i}".\n\n1.')
-            sentences.extend(requests + demands + questions + facts)
-        return sentences
-
-    if data is None:
-        all_sentences = []
-        print(f'Writing sentences about {topic}.')
-        # nr = 15
-        # fac = 1
-        prompt = f'Give me {nr * 2} independent keywords to the topic {topic}.\n\n1.'
-        all_sentences.extend(gen_sentences(nr * 2, fac, prompt))
-        # nr is higher to generate more keywords and reduce repetition
-        with open("save.p", "wb") as f:
-            pickle.dump(all_sentences, f)
-        print(f'Writing sentences not about {topic}.')
-        prompt = f'Give me {nr} topics fully unrelated to {topic}.\n\n1.'  # keywords are their own topics.
-        all_sentences.extend(gen_sentences(nr, 2 * fac, prompt))
-        # fac is higher because more sentences can be written without repetition to a full topic than to a keyword.
-        print(all_sentences)
-        print(len(all_sentences))
-        print('Labelling sentences.')
-        labels = []
-        for i in range(len(all_sentences)):
-            if i < len(all_sentences) / 2:
-                labels.append(True)
-            else:
-                labels.append(False)
-        data = [all_sentences, labels]
-        data = np.array(data).transpose()
-        mapping = []
-        uni = np.unique(data)
-        for i in uni:
-            mapping.append(np.where(data == i)[0][0])
-        data = data[mapping[1:]]
-        with open("save.p", "wb") as f:
-            pickle.dump(data, f)
-            # when something goes wrong, this save can be loaded by passing 'real=False' to generate_training_data.
-        print('full data has been saved to "save.p".')
-    pd.DataFrame(data).to_csv(f"{topic.replace(' ', '_')}_generated_data.csv", index=False,
-                              header=['sentences', 'labels'])
-    return pd.read_csv(f"{topic.replace(' ', '_')}_generated_data.csv")
-
-
 # this function is copied from https://huggingface.co/sentence-transformers/all-roberta-large-v1
 # it returns embedded versions of the sentences its passed.
 def long_roberta(sentences):
@@ -240,22 +186,20 @@ def long_roberta(sentences):
 
 # This function embeds the data and saves it to f'embedded_data_{topic}.pt'.
 # This function can take a while therefore it saves all embedded data every k=100 sentences in case of an error.
-def prepare_data_slowly(data, topic):
+def prepare_data_slowly(data, name):
     np_data = data.to_numpy().transpose()
     # the used model in long_roberta is SentenceTransformer('sentence-transformers/all-roberta-large-v1')
     embedded_data = np.array([[0, 0]])
-    # embedded_data = torch.load('embedded_data.pt') # in case data needs to be loaded here.
     k = 100
     for i in range(math.ceil(len(np_data[0]) / k)):
-        sentences = long_roberta(list(np_data[0][k * i:k * i + k]))  # embedd the sentences
+        sentences = long_roberta(list(np_data[0][k * i:k * i + k]))  # embed the sentences
         labels = np_data[1][k * i:k * i + k]
         a = np.array([torch.tensor_split(sentences, len(sentences)), labels])
         a = a.transpose()
         embedded_data = np.append(embedded_data, a, axis=0)
         if i == 0:
             embedded_data = embedded_data[1:]
-        # embedded_data.extend(a)
-        torch.save(embedded_data, f'embedded_data_{topic}.pt')
+        torch.save(embedded_data, f'embedded_data_{name}.pt')
         print(f'saved {i + 1} / {len(np_data[0]) / k}')
     return embedded_data.transpose()
 
@@ -297,17 +241,8 @@ def analyse_full_data(data):
     random_index = random.randint(0, data.shape[0] - 3)
     for row in data[['sentences', 'labels']][random_index:random_index + 3].itertuples():
         _, text, label = row
-        class_name = "About topic"
-        if label == 0:
-            class_name = "Not about topic"
         print(f'TEXT: {text}')
         print(f'LABEL: {label}')
-    # data contain so much garbage needs to be cleaned
-
-    truedata = data[data['labels'] == 1]
-    truedata = truedata['sentences']
-    falsedata = data[data['labels'] == 0]
-    falsedata = falsedata['sentences']
 
     def wordcloud_draw(data, color, s):
         words = ' '.join(data)
@@ -318,12 +253,19 @@ def analyse_full_data(data):
         plt.title(s)
         plt.axis('off')
 
-    plt.figure(figsize=[20, 10])
-    plt.subplot(1, 2, 1)
-    wordcloud_draw(truedata, 'white', 'Most-common words about the topic')
+    plt.figure(figsize=[20, 10*data["labels"].nunique()])  # TODO: Check whether to adjust the figure size
+    for i in range(data["labels"].nunique()):
+        one_hot = np.zeros(data["labels"].nunique())
+        one_hot[i] = 1
+        draw_data = pd.DataFrame()
+        for j in data.itertuples():
+            if j['labels'] == one_hot:
+                draw_data.append(j)
+        # draw_data = data[data['labels'] == one_hot]
+        # draw_data = draw_data['sentences']
+        plt.subplot(1, 2, i)
+        wordcloud_draw(draw_data, 'white', f'Most-common words in category {i}.')
 
-    plt.subplot(1, 2, 2)
-    wordcloud_draw(falsedata, 'white', 'Most-common words not about the topic')
     plt.show()  # end wordcloud
 
     data['text_word_count'] = data['sentences'].apply(lambda x: len(x.split()))
@@ -347,8 +289,9 @@ def analyse_full_data(data):
     plt.show()
 
 
-class TopicIdentifier:
-    def __init__(self):
+class DYNAMIC_AI:
+    def __init__(self, name):
+        self.name = name
         self.running_loss = None
         self.optimizer = None
         self.dataloader = None
@@ -364,42 +307,81 @@ class TopicIdentifier:
         self.dataset = None
 
     # generates training data (generate_data()) if real=False loads data instead
-    def generate_training_data(self, topic, real=True, nr=15, fac=1):
-        if real:
-            self.raw_data = generate_data(topic, nr=nr, fac=fac)
-        else:
-            with open('save.p', "rb") as f:
-                data = pickle.load(f)
-            self.raw_data = generate_data(topic, data=data, nr=nr, fac=fac)
+    def generate_training_data(self, prompt_nr=100, answer_nr=100, *prompts):
+        def ask_ai(prompt):  # get nr of answers from a prompt. Prompt should end with '\n\n1.'.
+            response = openai.Completion.create(model="text-davinci-003", prompt=prompt, temperature=1,
+                                                max_tokens=10 * answer_nr)
+            response = '1.' + response['choices'][0]['text'] + '\n'
+            li = []
+            for i in range(answer_nr):
+                pos = response.find(str(i + 1))
+                beg = pos + len(str(i + 1)) + 2
+                end = response[beg:].find('\n')
+                li.append(response[beg:beg + end])
+            return li
+
+        def gen_sentences():  # generates nr keywords to the prompt and 50*factor sentences to each
+            prompt_variations = ask_ai(master_prompt)
+            sentences = []
+            for i in prompt_variations:
+                sentences.extend(ask_ai(prompt=f'{i}\n\n1.'))
+            return sentences
+
+        all_sentences = []
+        labels = []
+        max = len(prompts)
+        for idx, i in enumerate(prompts):
+            master_prompt = f'Give me {prompt_nr} variations of this prompt: "{i}".\n\n1.'
+            new_sentences = gen_sentences()
+            for j in new_sentences:
+                if j not in all_sentences:
+                    all_sentences.append(j)
+                    one_hot = np.zeros(max)
+                    one_hot[idx] = 1
+                    labels.append(one_hot)
+
+        data = [all_sentences, labels]
+        data = np.array(data).transpose()
+        '''
+        mapping = []
+        uni = np.unique(data)
+        for i in uni:
+            mapping.append(np.where(data == i)[0][0])
+        data = data[mapping[1:]]
+        '''
+        pd.DataFrame(data).to_csv(f"{self.name.replace(' ', '_')}_generated_data.csv", index=False,
+                                  header=['sentences', 'labels'])
+        self.raw_data = pd.read_csv(f"{self.name.replace(' ', '_')}_generated_data.csv")
 
     # embeds the raw_data and creates a dataset from it
-    def embedd_data(self, topic, real=True):
+    def embed_data(self, real=True):
         def get_element(arr):
             return arr[0]
 
         if real:
-            self.embedded_data = prepare_data_slowly(self.raw_data, topic)
+            self.embedded_data = prepare_data_slowly(self.raw_data, self.name)
         else:
-            self.embedded_data = torch.load(f'embedded_data_{topic}.pt').transpose()
+            self.embedded_data = torch.load(f'embedded_data_{self.name}.pt').transpose()
+        # convert embedded data to torch dataset
         tpl = tuple(map(get_element, tuple(np.array_split(self.embedded_data[0], len(self.embedded_data[0])))))
         self.sentences = torch.cat(tpl)
         self.labels = self.embedded_data[1]
-        self.labels[self.labels is True] = 1.
-        self.labels[self.labels is False] = 0.
-        self.labels = np.expand_dims(self.labels, axis=1).astype('float32')
+        # self.labels[self.labels is True] = 1.
+        # self.labels[self.labels is False] = 0.
+        self.labels = np.expand_dims(self.labels, axis=1).astype('float32')  # TODO: Check this line for multi choice
         self.labels = torch.from_numpy(self.labels)
-        self.dataset = CustomTopicDataset(self.sentences, self.labels)
+        self.dataset = CustomMultiClassDataset(self.sentences, self.labels)
 
     # calls analyse_full_data with the raw_data
     def analyse_training_data(self):
         # check_length(self.raw_data)
         analyse_full_data(self.raw_data)
 
-    # this function trains and returns a model and the history object of its training process.
-    def train(self, epochs=10, lr=0.001, val_frac=0.1, batch_size=25, loss=nn.BCELoss()):
+    # this function trains a model and returns it as well as the history object of its training process.
+    def train(self, epochs=10, lr=0.001, val_frac=0.1, batch_size=25, loss=nn.CrossEntropyLoss()):
         # get_acc measures the accuracy and is passed as a metric to the history object.
         def get_acc(pred, target):
-            pred_tag = torch.round(pred)
+            pred_tag = torch.round(pred)  # TODO: Does this work with multi-class?
 
             correct_results_sum = (pred_tag == target).sum().float()
             acc = correct_results_sum / target.shape[0]
@@ -412,19 +394,17 @@ class TopicIdentifier:
         self.train_set, self.val_set = torch.utils.data.random_split(self.dataset,
                                                                      [len(self.dataset) - val_len, val_len])
         self.dataloader = DataLoader(dataset=self.train_set, batch_size=batch_size, shuffle=True)
-        self.model = NeuralNetwork(self.dataset.shape)
+        self.model = NeuralNetwork(self.dataset.shape, self.dataset[0].labels.shape)
 
         self.loss = loss  # the loss passed to this train function
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
+        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=lr)
 
         # define metrics to be monitored by the history object during training.
-        r2loss = R2Score()
         mseloss = nn.MSELoss()
-        bceloss = nn.BCELoss()
         accuracy = get_acc
 
-        history = History(self.val_set, self.train_set, self.model, r2loss=r2loss, mseloss=mseloss, accuracy=accuracy,
-                          bceloss=bceloss)  # define history object
+        # define history object
+        history = History(self.val_set, self.train_set, self.model, mseloss=mseloss, accuracy=accuracy)
 
         # main training loop
         for epoch in range(epochs):
@@ -457,65 +437,22 @@ def try_model(model):
     a = long_roberta(a)
     pred = model(a)
     print(pred.item())
-    print('Where 1 is about the topic and 0 is not.\n')
-
-
-# this function gets the accuracy of using openai instead of a model
-def prompt_engineering_acc(topic, dataframe):
-    acc = []
-    for idx, row in dataframe.reset_index().iterrows():
-        inp = row['sentences']
-        out = row['labels']
-        prompt = f'Answer with either "yes" or "no". Is the following sentence about {topic}?\n\n{inp}\n\nAnswer:'
-        response = openai.Completion.create(model="text-davinci-003", prompt=prompt, temperature=0, max_tokens=2)
-        response = response['choices'][0]['text']
-        if response.lower().startswith(' y'):
-            response = 1
-        elif response.lower().startswith(' n'):
-            response = 0
-        else:
-            print(f'Bad response from openai: "{response}".')
-        if isinstance(response, int):
-            if response == out:
-                acc.append(1)
-            else:
-                acc.append(0)
-    return 100 * sum(acc) / len(acc)
+    print('Where 1 is the first prompt: ""\nand 0 is the second: "".\n')
 
 
 if __name__ == "__main__":
-    '''
-    # this part loads and tests models.
-    biology = torch.load('model_biology.pt')
-    chemistry = torch.load('model_chemistry.pt')
-    while True:
-        print('BIOLOGY:')
-        try_model(biology)
-        print('CHEMISTRY:')
-        try_model(chemistry)
-    '''
-    # create two models, one for biology and one for chemistry
-    topic1 = 'biology'
-    topic2 = 'chemistry'
-    ti1 = TopicIdentifier()  # initialize topic identifiers
-    ti2 = TopicIdentifier()
-    ti1.generate_training_data(topic1, nr=40, fac=5)  # generate training data
-    ti2.generate_training_data(topic2, nr=40, fac=5)
-    acc1 = prompt_engineering_acc(topic1, ti1.raw_data)  # get accuracies of using openai instead
-    acc2 = prompt_engineering_acc(topic2, ti2.raw_data)
-    print(f'{topic1} prompt engineering: {acc1}')  # print those accuracies
-    print(f'{topic2} prompt engineering: {acc2}')
-    print(f'{topic1} analyse ----------------------------')  # analyse generated data
-    ti1.analyse_training_data()
-    print(f'{topic2} analyse ----------------------------')
-    ti2.analyse_training_data()
-    ti1.embedd_data(topic1)  # embedd data
-    ti2.embedd_data(topic2)
-    history1, model = ti1.train(epochs=10, lr=0.0001, val_frac=0.1, batch_size=10, loss=nn.BCELoss())  # train models
-    history2, model2 = ti1.train(epochs=10, lr=0.0001, val_frac=0.1, batch_size=10, loss=nn.BCELoss())
-    print(f'Now come the graphs from {topic1}.')  # plot training graphs
-    history1.plot()
-    print(f'Now come the graphs from {topic2}')
-    history2.plot()
+    ti = DYNAMIC_AI('subject_classifier')
+    biology_prompt = 'Write a sentence about biology.'
+    chemistry_prompt = 'Write a sentence about chemistry.'
+    physics_prompt = 'Write a sentence about physics.'
+    geology_prompt = 'Write a sentence about geology.'
+    ti.generate_training_data(2, 3, biology_prompt, chemistry_prompt, physics_prompt, geology_prompt)
+    print('ANALYSE DATA BEGINN')
+    ti.analyse_training_data()
+    print('ANALYSE DATA END')
+    ti.embed_data()
+    history, model = ti.train(epochs=10, lr=0.0001, val_frac=0.1, batch_size=10, loss=nn.BCELoss())
+    history.plot()
+
 
 # Far higher diversity in not topic related samples needed. Normal conversation, random sequences of letters, etc.
