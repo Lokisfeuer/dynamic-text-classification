@@ -58,7 +58,7 @@ class CustomTopicDataset(Dataset):  # the dataset class
 
 
 class NeuralNetwork(nn.Module):  # the NN with linear relu layers and one sigmoid in the end
-    def __init__(self, input_size):
+    def __init__(self, input_size, output_size):
         super().__init__()
         self.linear_relu_stack_with_sigmoid = nn.Sequential(
             nn.Linear(input_size, 2048),
@@ -67,19 +67,19 @@ class NeuralNetwork(nn.Module):  # the NN with linear relu layers and one sigmoi
             nn.ReLU(),
             nn.Linear(2048, 2048),
             nn.ReLU(),
-            nn.Linear(2048, 1024),
+            nn.Linear(2048, 1536),
             nn.ReLU(),
-            nn.Linear(1024, 512),
+            nn.Linear(1536, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 768),
+            nn.ReLU(),
+            nn.Linear(768, 512),
             nn.ReLU(),
             nn.Linear(512, 256),
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 32),
-            nn.ReLU(),
-            nn.Linear(32, 1),
+            nn.Linear(128, output_size),
             nn.Sigmoid()
         )
 
@@ -204,7 +204,7 @@ class DYNAMIC_AI:
         self.dataset = None
 
     # generates raw training data; prompt_nr*answer_nr samples are created
-    def generate_training_data(self, true_prompt, false_prompt, prompt_nr=100, answer_nr=100):
+    def generate_training_data(self, prompt_nr=100, answer_nr=100, **prompts):
         def ask_ai(prompt):  # get nr of answers from a prompt. Prompt should end with '\n\n1.'.
             response = openai.Completion.create(model="text-davinci-003", prompt=prompt, temperature=1,
                                                 max_tokens=10 * answer_nr)
@@ -217,23 +217,31 @@ class DYNAMIC_AI:
                 li.append(response[beg:beg + end])
             return li
 
-        def gen_sentences(master_prompt):  # generates nr keywords to the prompt and 50*factor sentences to each
+        def gen_sentences():  # generates nr keywords to the prompt and 50*factor sentences to each
             prompt_variations = ask_ai(master_prompt)
             sentences = []
             for i in prompt_variations:
                 sentences.extend(ask_ai(prompt=f'Give me {answer_nr} possible responses to this prompt: "{i}"\n\n1.'))
             return sentences
 
-        true_master_prompt = f'Give me {prompt_nr} variations of this prompt: "{true_prompt}".\n\n1.'
-        all_sentences = gen_sentences(master_prompt=true_master_prompt)
-        false_master_prompt = f'Give me {prompt_nr} variations of this prompt: "{false_prompt}".\n\n1.'
-        all_sentences.extend(gen_sentences(master_prompt=false_master_prompt))
         labels = []
-        for i in range(len(all_sentences)):
-            if i < len(all_sentences) / 2:
-                labels.append(True)
-            else:
-                labels.append(False)
+        all_sentences = []
+        x = 0
+        for i in prompts.keys():
+            master_prompt = f'Give me {prompt_nr} variations of this prompt: "{prompts[i]}".\n\n1.'
+            new_sentences = gen_sentences()
+            all_sentences.extend(new_sentences)
+            labels.extend([x] * len(new_sentences))
+            x += 1
+            '''
+            label = np.zeros(len(prompts.keys()))
+            label[x] = 1
+            new_labels = [label] * len(new_sentences)
+            labels.extend(new_labels)
+            x += 1
+            # TODO: Check this creation of labels
+            '''
+
         data = [all_sentences, labels]
         data = np.array(data).transpose()
         mapping = []
@@ -265,10 +273,16 @@ class DYNAMIC_AI:
         def transpose(lst):
             return list(map(list, zip(*lst)))
 
+        def onehot(idx):
+            one_hot = np.zeros(self.raw_data["labels"].nunique())
+            one_hot[idx] = 1
+            return torch.from_numpy(one_hot)
+
         self.embedded_data = transpose(self.embedded_data)
         self.labels = self.embedded_data[1]
         self.sentences = self.embedded_data[0]
-        self.labels = [torch.tensor([1.]) if i else torch.tensor([0.]) for i in self.labels]
+        # self.labels = [torch.tensor([i]) for i in self.labels]
+        # self.labels = [onehot(i) for i in self.labels]
         self.dataset = CustomTopicDataset(self.sentences, self.labels)
 
     # analyse the data including: balance, common words (wordcloud), sample lengths, duplicates and null values
@@ -294,11 +308,6 @@ class DYNAMIC_AI:
             print(f'TEXT: {text}')
             print(f'LABEL: {label}')
 
-        true_data = self.raw_data[self.raw_data['labels'] == 1]
-        true_data = true_data['sentences']
-        false_data = self.raw_data[self.raw_data['labels'] == 0]
-        false_data = false_data['sentences']
-
         def wordcloud_draw(data, color, s):
             words = ' '.join(data)
             cleaned_word = " ".join([word for word in words.split() if (word != 'movie' and word != 'film')])
@@ -308,14 +317,14 @@ class DYNAMIC_AI:
             plt.title(s)
             plt.axis('off')
 
-        plt.figure(figsize=[20, 10])  # first value is to the side, second is height.
-
-        plt.subplot(1, 2, 1)
-        wordcloud_draw(true_data, 'white', 'Most-common words about the topic')
-
-        plt.subplot(1, 2, 2)
-        wordcloud_draw(false_data, 'white', 'Most-common words not about the topic')
-        plt.show()  # end wordcloud
+        x = self.raw_data["labels"].nunique()
+        plt.figure(figsize=[10*x, 10])
+        for i in range(x):
+            part_data = self.raw_data[self.raw_data["labels"] == i]
+            part_data = part_data['sentences']
+            plt.subplot(1, x, 1 + i)
+            wordcloud_draw(part_data, 'white', 'Most-common words about the topic')
+        plt.show()
 
         self.raw_data['text_word_count'] = self.raw_data['sentences'].apply(lambda x: len(x.split()))
 
@@ -327,12 +336,12 @@ class DYNAMIC_AI:
         plt.show()
 
     # this function trains a model and returns it as well as the history object of its training process.
-    def train(self, epochs=10, lr=0.001, val_frac=0.1, batch_size=25, loss=nn.BCELoss()):
+    def train(self, epochs=10, lr=0.001, val_frac=0.1, batch_size=25, loss=nn.CrossEntropyLoss()):
         # get_acc measures the accuracy and is passed as a metric to the history object.
         def get_acc(pred, target):
-            pred_tag = torch.round(pred)
+            pred_tag = torch.argmax(pred)
 
-            correct_results_sum = (pred_tag == target).sum().float()
+            correct_results_sum = (pred_tag == torch.argmax(target)).sum().float()
             acc = correct_results_sum / target.shape[0]
             acc = torch.round(acc * 100)
 
@@ -343,19 +352,20 @@ class DYNAMIC_AI:
         self.train_set, self.val_set = torch.utils.data.random_split(self.dataset,
                                                                      [len(self.dataset) - val_len, val_len])
         self.dataloader = DataLoader(dataset=self.train_set, batch_size=batch_size, shuffle=True)
-        self.model = NeuralNetwork(self.dataset.shape)
+        self.model = NeuralNetwork(self.dataset.shape, self.raw_data["labels"].nunique())
 
         self.loss = loss  # the loss passed to this train function
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
+        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=lr)
 
         # define metrics to be monitored by the history object during training.
-        r2loss = R2Score()
+        # r2loss = R2Score()
         mseloss = nn.MSELoss()
-        bceloss = nn.BCELoss()
+        # bceloss = nn.BCELoss()
         accuracy = get_acc
+        cel = nn.CrossEntropyLoss()
 
-        history = History(self.val_set, self.train_set, self.model, r2loss=r2loss, mseloss=mseloss, accuracy=accuracy,
-                          bceloss=bceloss)  # define history object
+        # define history object
+        history = History(self.val_set, self.train_set, self.model, accuracy=accuracy, cross_entropy_loss=cel)
 
         # main training loop
         for epoch in range(epochs):
@@ -387,19 +397,26 @@ def try_model(model):
     a = input('Please enter your input sentence: ')
     a = long_roberta(a)
     pred = model(a)
-    print(pred.item())
-    print('Where 1 is the first, true prompt: ""\nand 0 is the second, false prompt: "".\n')
+    print(pred)
+    print(f'Final ')
+    print('The probabilities for each prompt in order.')
 
 
 if __name__ == "__main__":
+    model = torch.load("model_2023_07_22T00I57I30i049358/model.pt")
+    while True:
+        try_model(model)
     ti = DYNAMIC_AI('topic_identifier')
-    true_prompt = 'Write a short question about biology.'
+    true_prompt = 'Write a short question about geology.'
     false_prompt = 'Write a short factual statement about shakespeare.'
-    # ti.generate_training_data(true_prompt, false_prompt, prompt_nr=2, answer_nr=3)
+    cook_prompt = 'How could I cook my eggs?'
+    # ti.generate_training_data(prompt_nr=2, answer_nr=3, geo_prompt=true_prompt, shakespeare_prompt=false_prompt, cook_prompt=cook_prompt)
     ti.raw_data = pd.read_csv(f"topic_identifier_generated_data.csv")
+    ti.embedded_data = torch.load(f'embedded_data_topic_identifier.pt')
+    ti.to_dataset()
     print('ANALYSE DATA BEGINN')
-    ti.analyse_training_data()
+    # ti.analyse_training_data()
     print('ANALYSE DATA END')
     # ti.embed_data()
-    # history, model = ti.train(epochs=10, lr=0.0001, val_frac=0.1, batch_size=10, loss=nn.BCELoss())
-    # history.plot()
+    history, model = ti.train(epochs=3, lr=0.0001, val_frac=0.1, batch_size=10, loss=nn.CrossEntropyLoss())
+    history.plot()
