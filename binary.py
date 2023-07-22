@@ -385,7 +385,7 @@ class DYNAMIC_AI:
                 self.optimizer.zero_grad()
                 self.running_loss += lo.item()
                 if (step + 1) % math.floor(len(self.dataloader) / 5 + 2) == 0:  # if (step+1) % 100 == 0:
-                    print(f'current loss:\t\t{self.running_loss / 100}')
+                    print(f'current loss:\t\t{self.running_loss / 100}')  # TODO: Fix this, /100 is not correct here.
                     self.running_loss = 0
                     history.save(epoch + step / len(self.dataloader))
                     # save current state of the model to history
