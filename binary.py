@@ -15,6 +15,7 @@ import pickle
 from datetime import datetime as d  # to generate timestamps to save models
 import math
 import random
+import json
 
 # from sentence_transformers import SentenceTransformer  # for word embedding
 from transformers import AutoTokenizer, AutoModel
@@ -204,7 +205,7 @@ class DYNAMIC_AI:
         self.dataset = None
 
     # generates raw training data; prompt_nr*answer_nr samples are created
-    def generate_training_data(self, true_prompt, false_prompt, prompt_nr=100, answer_nr=100):
+    def generate_training_data(self, true_prompt, false_prompt, prompt_nr=100, answer_nr=100, load=False):
         def ask_ai(prompt):  # get nr of answers from a prompt. Prompt should end with '\n\n1.'.
             response = openai.Completion.create(model="text-davinci-003", prompt=prompt, temperature=1,
                                                 max_tokens=10 * answer_nr)
@@ -222,10 +223,25 @@ class DYNAMIC_AI:
             sentences = []
             for i in prompt_variations:
                 sentences.extend(ask_ai(prompt=f'Give me {answer_nr} possible responses to this prompt: "{i}"\n\n1.'))
+                #with open('sentences_quicksave.json', 'w') as f:
+                #    f.write(json.dumps({'nr': nr,'all_sentences': all_sentences, 'sentences': sentences}))
             return sentences
 
+        '''
+        nr = 0
+        all_sentences = []
+        if load and os.path.exists("sentences_quicksave.json"):  # Or folder, will return true or false
+            with open('sentences_quicksave.json', 'r') as f:
+                a = json.loads(f.read())
+            all_sentences = a['all_sentences']
+            sentences = a['sentences']
+            nr = a['nr']
+            if nr == 0:
+        else:
+        '''
         true_master_prompt = f'Give me {prompt_nr} variations of this prompt: "{true_prompt}".\n\n1.'
         all_sentences = gen_sentences(master_prompt=true_master_prompt)
+        nr = 1
         false_master_prompt = f'Give me {prompt_nr} variations of this prompt: "{false_prompt}".\n\n1.'
         all_sentences.extend(gen_sentences(master_prompt=false_master_prompt))
         labels = []

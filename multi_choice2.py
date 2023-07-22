@@ -15,6 +15,7 @@ import pickle
 from datetime import datetime as d  # to generate timestamps to save models
 import math
 import random
+import json
 
 # from sentence_transformers import SentenceTransformer  # for word embedding
 from transformers import AutoTokenizer, AutoModel
@@ -204,7 +205,7 @@ class DYNAMIC_AI:
         self.dataset = None
 
     # generates raw training data; prompt_nr*answer_nr samples are created
-    def generate_training_data(self, prompt_nr=100, answer_nr=100, **prompts):
+    def generate_training_data(self, prompt_nr=100, answer_nr=100, load=False, **prompts):
         def ask_ai(prompt):  # get nr of answers from a prompt. Prompt should end with '\n\n1.'.
             response = openai.Completion.create(model="text-davinci-003", prompt=prompt, temperature=1,
                                                 max_tokens=10 * answer_nr)
@@ -224,23 +225,24 @@ class DYNAMIC_AI:
                 sentences.extend(ask_ai(prompt=f'Give me {answer_nr} possible responses to this prompt: "{i}"\n\n1.'))
             return sentences
 
-        labels = []
-        all_sentences = []
-        x = 0
-        for i in prompts.keys():
+        if load:
+            with open('generation_quicksave.json', 'r') as f:
+                a = json.loads(f.read())
+            labels = a['labels']
+            all_sentences = a['all_sentences']
+            x = a['x']
+        else:
+            labels = []
+            all_sentences = []
+            x = 0
+        for i in prompts.keys()[x:]:
             master_prompt = f'Give me {prompt_nr} variations of this prompt: "{prompts[i]}".\n\n1.'
             new_sentences = gen_sentences()
             all_sentences.extend(new_sentences)
             labels.extend([x] * len(new_sentences))
             x += 1
-            '''
-            label = np.zeros(len(prompts.keys()))
-            label[x] = 1
-            new_labels = [label] * len(new_sentences)
-            labels.extend(new_labels)
-            x += 1
-            # TODO: Check this creation of labels
-            '''
+            with open('generation_quicksave.json', 'w') as f:
+                f.write(json.dumps({'labels': labels, 'all_sentences': all_sentences, 'x': x}))
 
         data = [all_sentences, labels]
         data = np.array(data).transpose()
