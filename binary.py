@@ -206,12 +206,12 @@ class DYNAMIC_AI:
 
     # generates raw training data; prompt_nr*answer_nr samples are created
     def generate_training_data(self, true_prompt, false_prompt, prompt_nr=100, answer_nr=100, load=False):
-        def ask_ai(prompt):  # get nr of answers from a prompt. Prompt should end with '\n\n1.'.
+        def ask_ai(prompt, nr):  # get nr of answers from a prompt. Prompt should end with '\n\n1.'.
             response = openai.Completion.create(model="text-davinci-003", prompt=prompt, temperature=1,
-                                                max_tokens=10 * answer_nr)
+                                                max_tokens=10 * nr)
             response = '1.' + response['choices'][0]['text'] + '\n'
             li = []
-            for i in range(answer_nr):
+            for i in range(nr):
                 pos = response.find(str(i + 1))
                 beg = pos + len(str(i + 1)) + 2
                 end = response[beg:].find('\n')
@@ -219,10 +219,10 @@ class DYNAMIC_AI:
             return li
 
         def gen_sentences(master_prompt):  # generates nr keywords to the prompt and 50*factor sentences to each
-            prompt_variations = ask_ai(master_prompt)
+            prompt_variations = ask_ai(master_prompt, prompt_nr)
             sentences = []
             for i in prompt_variations:
-                sentences.extend(ask_ai(prompt=f'Give me {answer_nr} possible responses to this prompt: "{i}"\n\n1.'))
+                sentences.extend(ask_ai(prompt=f'Give me {answer_nr} possible responses to this prompt: "{i}"\n\n1.', nr=answer_nr))
                 #with open('sentences_quicksave.json', 'w') as f:
                 #    f.write(json.dumps({'nr': nr,'all_sentences': all_sentences, 'sentences': sentences}))
             return sentences
@@ -241,7 +241,6 @@ class DYNAMIC_AI:
         '''
         true_master_prompt = f'Give me {prompt_nr} variations of this prompt: "{true_prompt}".\n\n1.'
         all_sentences = gen_sentences(master_prompt=true_master_prompt)
-        nr = 1
         false_master_prompt = f'Give me {prompt_nr} variations of this prompt: "{false_prompt}".\n\n1.'
         all_sentences.extend(gen_sentences(master_prompt=false_master_prompt))
         labels = []
