@@ -332,11 +332,11 @@ class DYNAMIC_AI:
     def train(self, epochs=10, lr=0.001, val_frac=0.1, batch_size=25, loss=nn.CrossEntropyLoss()):
         # get_acc measures the accuracy and is passed as a metric to the history object.
         def get_acc(pred, target):
-            pred_tag = torch.argmax(pred)
+            pred_tag = torch.argmax(pred, dim=1)
 
-            correct_results_sum = (pred_tag == torch.argmax(target)).sum().float()
+            correct_results_sum = torch.sum(torch.eq(pred_tag, target))
             acc = correct_results_sum / target.shape[0]
-            acc = torch.round(acc * 100)
+            acc = acc * 100
 
             return acc
 
