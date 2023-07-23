@@ -6,16 +6,16 @@
 '''
 
 # importing
-import sys
+# import sys
 
 import numpy as np  # to handle data
 import pandas as pd  # to handle and save data
 import os
-import pickle
+# import pickle
 from datetime import datetime as d  # to generate timestamps to save models
 import math
 import random
-import json
+# import json
 
 # from sentence_transformers import SentenceTransformer  # for word embedding
 from transformers import AutoTokenizer, AutoModel
@@ -187,7 +187,7 @@ def long_roberta(sentences):
     return sentence_embeddings
 
 
-class DYNAMIC_AI:
+class DYNAMIC_BINARY_AI:
     def __init__(self, name):
         self.name = name
         self.running_loss = None
@@ -297,7 +297,6 @@ class DYNAMIC_AI:
         print(f'Number of duplicate rows:\n{len(duplicates)}')
         print(f'Check for null values:\n{self.raw_data.isnull().sum()}')
         sns.countplot(x=self.raw_data['labels'])  # plotting distribution for easier understanding
-        # TODO: check with colabs position of plot
         print('The start of the dataset:')
         print(self.raw_data.head(3))
 
@@ -384,7 +383,7 @@ class DYNAMIC_AI:
                 self.optimizer.zero_grad()
                 self.running_loss.append(lo.item())
                 if (step + 1) % math.floor(len(self.dataloader) / 5 + 2) == 0:  # if (step+1) % 100 == 0:
-                    print(f'current loss:\t\t{sum(self.running_loss) / len(self.running_loss)}')  # TODO: Fix this, /100 is not correct here.
+                    print(f'current loss:\t\t{sum(self.running_loss) / len(self.running_loss)}')
                     self.running_loss = []
                     history.save(epoch + step / len(self.dataloader))
                     # save current state of the model to history
@@ -407,7 +406,7 @@ def try_model(model):
 
 
 if __name__ == "__main__":
-    ti = DYNAMIC_AI('topic_identifier')
+    ti = DYNAMIC_BINARY_AI('topic_identifier')
     true_prompt = 'Write a short question about biology.'
     false_prompt = 'Write a short factual statement about shakespeare.'
     # ti.generate_training_data(true_prompt, false_prompt, prompt_nr=2, answer_nr=3)

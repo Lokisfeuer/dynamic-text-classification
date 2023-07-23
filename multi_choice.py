@@ -6,12 +6,12 @@
 '''
 
 # importing
-import sys
+# import sys
 
 import numpy as np  # to handle data
 import pandas as pd  # to handle and save data
 import os
-import pickle
+# import pickle
 from datetime import datetime as d  # to generate timestamps to save models
 import math
 import random
@@ -24,7 +24,7 @@ import torch  # for AI
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
-from torchmetrics import R2Score
+# from torchmetrics import R2Score
 
 import matplotlib.pyplot as plt  # to plot training
 import openai  # to generate training data
@@ -178,7 +178,7 @@ def long_roberta(sentences):
     return sentence_embeddings
 
 
-class DYNAMIC_AI:
+class DYNAMIC_MULTI_CLASS_AI:
     def __init__(self, name):
         self.name = name
         self.running_loss = None
@@ -289,7 +289,6 @@ class DYNAMIC_AI:
         print(f'Number of duplicate rows:\n{len(duplicates)}')
         print(f'Check for null values:\n{self.raw_data.isnull().sum()}')
         sns.countplot(x=self.raw_data['labels'])  # plotting distribution for easier understanding
-        # TODO: check with colabs position of plot
         print('The start of the dataset:')
         print(self.raw_data.head(3))
 
@@ -372,7 +371,7 @@ class DYNAMIC_AI:
                 self.optimizer.zero_grad()
                 self.running_loss.append(lo.item())
                 if (step + 1) % math.floor(len(self.dataloader) / 5 + 2) == 0:  # if (step+1) % 100 == 0:
-                    print(f'current loss:\t\t{sum(self.running_loss) / len(self.running_loss)}')  # TODO: Fix this, /100 is not correct here.
+                    print(f'current loss:\t\t{sum(self.running_loss) / len(self.running_loss)}')
                     self.running_loss = []
                     history.save(epoch + step / len(self.dataloader))
                     # save current state of the model to history
@@ -401,7 +400,7 @@ if __name__ == "__main__":
     while True:
         try_model(model)
     '''
-    ti = DYNAMIC_AI('geo_bio_cook')
+    ti = DYNAMIC_MULTI_CLASS_AI('geo_bio_cook')
     true_prompt = 'Write a short factual statement about geology.'
     false_prompt = 'Write a short factual statement about biology.'
     cook_prompt = 'Write a short factual statement about cooking.'
