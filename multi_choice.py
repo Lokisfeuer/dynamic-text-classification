@@ -23,7 +23,7 @@ from transformers import AutoTokenizer, AutoModel
 import torch  # for AI
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-# import torch.nn.functional as F
+import torch.nn.functional as F
 from torchmetrics import R2Score
 
 import matplotlib.pyplot as plt  # to plot training
@@ -68,25 +68,16 @@ class NeuralNetwork(nn.Module):  # the NN with linear relu layers and one sigmoi
             nn.ReLU(),
             nn.Linear(2048, 2048),
             nn.ReLU(),
-            nn.Linear(2048, 1536),
+            nn.Linear(2048, 1024),
             nn.ReLU(),
-            nn.Linear(1536, 1024),
+            nn.Linear(1024, 512),
             nn.ReLU(),
-            nn.Linear(1024, 768),
-            nn.ReLU(),
-            nn.Linear(768, 512),
-            nn.ReLU(),
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, output_size),
-            nn.Sigmoid()
+            nn.Linear(512, output_size)
         )
 
     def forward(self, x):
         logits = self.linear_relu_stack_with_sigmoid(x)
-        return logits
+        return F.softmax(logits)
 
 
 class History:  # The history object to keep track of metrics during training and plot graphs to it.
@@ -225,7 +216,7 @@ class DYNAMIC_AI:
                 sentences.extend(ask_ai(prompt=f'Give me {answer_nr} possible responses to this prompt: "{i}"\n\n1.'))
             return sentences
 
-        if load:
+        if load and os.path.exists("sentences_quicksave.json"):
             with open('generation_quicksave.json', 'r') as f:
                 a = json.loads(f.read())
             labels = a['labels']
@@ -371,18 +362,18 @@ class DYNAMIC_AI:
 
         # main training loop
         for epoch in range(epochs):
-            self.running_loss = 0.
-            print(f'Starting new batch {epoch + 1}/{epochs}')
+            self.running_loss = []
+            print(f'Starting new epoch {epoch + 1}/{epochs}')
             for step, (inputs, labels) in enumerate(self.dataloader):
                 y_pred = self.model(inputs)
                 lo = self.loss(y_pred, labels)
                 lo.backward()
                 self.optimizer.step()
                 self.optimizer.zero_grad()
-                self.running_loss += lo.item()
+                self.running_loss.append(lo.item())
                 if (step + 1) % math.floor(len(self.dataloader) / 5 + 2) == 0:  # if (step+1) % 100 == 0:
-                    print(f'current loss:\t\t{self.running_loss / 100}')  # TODO: Fix this, /100 is not correct here.
-                    self.running_loss = 0
+                    print(f'current loss:\t\t{sum(self.running_loss) / len(self.running_loss)}')  # TODO: Fix this, /100 is not correct here.
+                    self.running_loss = []
                     history.save(epoch + step / len(self.dataloader))
                     # save current state of the model to history
         # generate folder with timestamp and save the model there.
@@ -422,5 +413,5 @@ if __name__ == "__main__":
     #ti.embed_data()
     ti.embedded_data = torch.load(f'embedded_data_geo_bio_cook.pt')
     ti.to_dataset()
-    history, model = ti.train(epochs=50, lr=0.0002, val_frac=0.1, batch_size=25, loss=nn.CrossEntropyLoss())
+    history, model = ti.train(epochs=25, lr=0.07, val_frac=0.1, batch_size=25, loss=nn.CrossEntropyLoss())
     history.plot()

@@ -375,18 +375,18 @@ class DYNAMIC_AI:
 
         # main training loop
         for epoch in range(epochs):
-            self.running_loss = 0.
-            print(f'Starting new batch {epoch + 1}/{epochs}')
+            self.running_loss = []
+            print(f'Starting new epoch {epoch + 1}/{epochs}')
             for step, (inputs, labels) in enumerate(self.dataloader):
                 y_pred = self.model(inputs)
                 lo = self.loss(y_pred, labels)
                 lo.backward()
                 self.optimizer.step()
                 self.optimizer.zero_grad()
-                self.running_loss += lo.item()
+                self.running_loss.append(lo.item())
                 if (step + 1) % math.floor(len(self.dataloader) / 5 + 2) == 0:  # if (step+1) % 100 == 0:
-                    print(f'current loss:\t\t{self.running_loss / 100}')  # TODO: Fix this, /100 is not correct here.
-                    self.running_loss = 0
+                    print(f'current loss:\t\t{sum(self.running_loss) / len(self.running_loss)}')  # TODO: Fix this, /100 is not correct here.
+                    self.running_loss = []
                     history.save(epoch + step / len(self.dataloader))
                     # save current state of the model to history
         # generate folder with timestamp and save the model there.
