@@ -2,6 +2,7 @@
 !pip install transformers
 !pip install sentence_transformers
 !pip install torchmetrics
+!pip install torcheval
 !pip install openai
 '''
 
@@ -25,6 +26,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
 # from torchmetrics import R2Score
+from torcheval.metrics.functional import multiclass_f1_score
 
 import matplotlib.pyplot as plt  # to plot training
 import openai  # to generate training data
@@ -328,7 +330,7 @@ class DYNAMIC_MULTI_CLASS_AI:
         plt.show()
 
     # this function trains a model and returns it as well as the history object of its training process.
-    def train(self, epochs=10, lr=0.001, val_frac=0.1, batch_size=25, loss=nn.CrossEntropyLoss()):
+    def train(self, epochs=10, lr=0.001, val_frac=0.1, batch_size=25, loss=nn.CrossEntropyLoss(), **metrics):
         # get_acc measures the accuracy and is passed as a metric to the history object.
         def get_acc(pred, target):
             pred_tag = torch.argmax(pred, dim=1)
@@ -351,13 +353,13 @@ class DYNAMIC_MULTI_CLASS_AI:
 
         # define metrics to be monitored by the history object during training.
         # r2loss = R2Score()
-        mseloss = nn.MSELoss()
+        #mseloss = nn.MSELoss()
         # bceloss = nn.BCELoss()
         accuracy = get_acc
         cel = nn.CrossEntropyLoss()
 
         # define history object
-        history = History(self.val_set, self.train_set, self.model, accuracy=accuracy, cross_entropy_loss=cel)
+        history = History(self.val_set, self.train_set, self.model, accuracy=accuracy, cross_entropy_loss=cel, f1_score=multiclass_f1_score, **metrics)
 
         # main training loop
         for epoch in range(epochs):
@@ -400,17 +402,17 @@ if __name__ == "__main__":
     while True:
         try_model(model)
     '''
-    ti = DYNAMIC_MULTI_CLASS_AI('geo_bio_cook')
+    gbc = DYNAMIC_MULTI_CLASS_AI('geo_bio_cook')
     true_prompt = 'Write a short factual statement about geology.'
     false_prompt = 'Write a short factual statement about biology.'
     cook_prompt = 'Write a short factual statement about cooking.'
-    #ti.generate_training_data(prompt_nr=10, answer_nr=50, load=True, geo_prompt=true_prompt, shakespeare_prompt=false_prompt, cook_prompt=cook_prompt)
-    ti.raw_data = pd.read_csv(f"geo_bio_cook_generated_data.csv")
+    gbc.generate_training_data(prompt_nr=10, answer_nr=50, load=True, geo_prompt=true_prompt, shakespeare_prompt=false_prompt, cook_prompt=cook_prompt)
+    #ti.raw_data = pd.read_csv(f"pre_prepared_data/geo_bio_cook_generated_data.csv")
     print('ANALYSE DATA BEGINN')
-    #ti.analyse_training_data()
+    gbc.analyse_training_data()
     print('ANALYSE DATA END')
-    #ti.embed_data()
-    ti.embedded_data = torch.load(f'embedded_data_geo_bio_cook.pt')
-    ti.to_dataset()
-    history, model = ti.train(epochs=25, lr=0.07, val_frac=0.1, batch_size=25, loss=nn.CrossEntropyLoss())
+    gbc.embed_data()
+    #ti.embedded_data = torch.load(f'pre_prepared_data/embedded_data_geo_bio_cook.pt')
+    #ti.to_dataset()
+    history, model = gbc.train(epochs=25, lr=0.07, val_frac=0.1, batch_size=25, loss=nn.CrossEntropyLoss())
     history.plot()

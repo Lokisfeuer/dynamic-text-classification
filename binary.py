@@ -409,11 +409,11 @@ if __name__ == "__main__":
     ti = DYNAMIC_BINARY_AI('topic_identifier')
     true_prompt = 'Write a short question about biology.'
     false_prompt = 'Write a short factual statement about shakespeare.'
-    # ti.generate_training_data(true_prompt, false_prompt, prompt_nr=2, answer_nr=3)
-    ti.raw_data = pd.read_csv(f"topic_identifier_generated_data.csv")
+    ti.generate_training_data(true_prompt, false_prompt, prompt_nr=2, answer_nr=3)
+    # ti.raw_data = pd.read_csv(f"pre_prepared_data/topic_identifier_generated_data.csv")
     print('ANALYSE DATA BEGINN')
     ti.analyse_training_data()
     print('ANALYSE DATA END')
-    # ti.embed_data()
-    # history, model = ti.train(epochs=10, lr=0.0001, val_frac=0.1, batch_size=10, loss=nn.BCELoss())
-    # history.plot()
+    ti.embed_data()
+    history, model = ti.train(epochs=10, lr=0.0001, val_frac=0.1, batch_size=10, loss=nn.BCELoss())
+    history.plot()
