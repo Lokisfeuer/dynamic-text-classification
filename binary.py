@@ -239,9 +239,9 @@ class DYNAMIC_BINARY_AI:
             if nr == 0:
         else:
         '''
-        true_master_prompt = f'Give me {prompt_nr} variations of this prompt: "{true_prompt}".\n\n1.'
+        true_master_prompt = f'Prompt: "{true_prompt}"\nGive me {prompt_nr} variations of this prompt.\n\n1.'
         all_sentences = gen_sentences(master_prompt=true_master_prompt)
-        false_master_prompt = f'Give me {prompt_nr} variations of this prompt: "{false_prompt}".\n\n1.'
+        false_master_prompt = f'Prompt: "{false_prompt}"\nGive me {prompt_nr} variations of this prompt.\n\n1.'
         all_sentences.extend(gen_sentences(master_prompt=false_master_prompt))
         labels = []
         for i in range(len(all_sentences)):
@@ -409,11 +409,12 @@ if __name__ == "__main__":
     ti = DYNAMIC_BINARY_AI('topic_identifier')
     true_prompt = 'Write a short question about biology.'
     false_prompt = 'Write a short factual statement about shakespeare.'
-    ti.generate_training_data(true_prompt, false_prompt, prompt_nr=2, answer_nr=3)
-    # ti.raw_data = pd.read_csv(f"pre_prepared_data/topic_identifier_generated_data.csv")
+    # ti.generate_training_data(true_prompt, false_prompt, prompt_nr=2, answer_nr=3)
+    ti.raw_data = pd.read_csv(f"pre_prepared_data/binary_bio_shake_generated_data.csv")
     print('ANALYSE DATA BEGINN')
     ti.analyse_training_data()
     print('ANALYSE DATA END')
-    ti.embed_data()
+    # ti.embed_data()
+    ti.embedded_data = torch.load('embedded_data_binary_bio_shake.pt')
     history, model = ti.train(epochs=10, lr=0.0001, val_frac=0.1, batch_size=10, loss=nn.BCELoss())
     history.plot()

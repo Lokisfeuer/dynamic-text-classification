@@ -229,7 +229,7 @@ class DYNAMIC_MULTI_CLASS_AI:
             all_sentences = []
             x = 0
         for i in list(prompts.keys())[x:]:
-            master_prompt = f'Give me {prompt_nr} variations of this prompt: "{prompts[i]}".\n\n1.'
+            master_prompt = f'Prompt: "{prompts[i]}"\nGive me {prompt_nr} variations of this prompt.\n\n1.'
             new_sentences = gen_sentences()
             all_sentences.extend(new_sentences)
             labels.extend([x] * len(new_sentences))
@@ -384,6 +384,32 @@ class DYNAMIC_MULTI_CLASS_AI:
         print(f'Model saved to "model_{now}/model.pt"')
         history.plot(f"model_{now}")  # save graphs to the folder
         return history, self.model  # return history and model
+
+
+class SingleClassAccuracy:
+    def __init__(self, nr, sensitivity=True, specificity=True):
+        self.nr = nr
+        if not isinstance(sensitivity, bool):
+            raise TypeError
+        elif not isinstance(specificity, bool):
+            raise TypeError
+        elif sensitivity == specificity:
+            raise ValueError
+        self.sensitivity = sensitivity  # true positives divided by what should be positive
+        # true positives divided by (true positives + false negatives)
+        self.specificity = specificity  # true negatives divided by what should be negative
+        # true negatives divided by (true negatives + false positives)
+
+    def __call__(self, pred, target):
+        correct = 0
+        samples = 0
+        for i, j in zip(pred, target):
+            if (self.sensitivity and self.nr==j) or (self.specificity and self.nr==torch.argmax(i)):
+                if torch.argmax(i)==j:
+                    correct += 1
+                samples += 1
+        return correct / samples
+
 
 
 # with this function you can pass custom sentences to the model
